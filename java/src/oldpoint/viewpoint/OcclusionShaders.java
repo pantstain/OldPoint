@@ -191,6 +191,24 @@ final class OcclusionShaders {
         }
         """;
 
+    /**
+     * Viewpoint pulls surfaces toward the camera by an amount growing with the
+     * square of camera distance, sized for its 0.05 near plane. The overhead
+     * camera sits 150+ units away, where that pull moves fences and wall art
+     * tenths of a tile forward, in front of characters leaning against them.
+     * Overhead uses a 2.0 near plane, about forty times finer depth, so the
+     * same depth separation needs one fortieth of the pull.
+     */
+    private static final String OVERHEAD_PULL =
+            """
+
+        vec3 oldPointPulled(MeshVertex v, vec3 eye) {
+          vec3 p = pulled(v, eye);
+          if (uOPInterior == 0) return p;
+          return v.pos + (p - v.pos) * 0.025;
+        }
+        """;
+
     static String shader(String path, String source) {
         if (source == null || source.contains("void oldPointInterior()")) {
             return source;
@@ -244,11 +262,14 @@ final class OcclusionShaders {
             return source.replace(
                             "out vec3 vPos;",
                             "out vec3 vPos;\nout vec3 vOPStructure;\nout vec3 vOPLift;\nflat out int vOPCanopy;\nflat out vec3 vOPPlantBase;\nflat out vec3 vOPObjectRoot;\nflat out int vOPObjectKind;\nflat out int vOPModelIndex;\nflat out float vOPSourceBase;\nflat out int vOPGeneratedRoof;"
-                                    + OpeningLookup.SHADER)
-                    .replace("vPos = pulled(v, uEye);", plantVaryings() + "\n  vPos = pulled(v, uEye);")
+                                    + OpeningLookup.SHADER
+                                    + OVERHEAD_PULL)
+                    .replace(
+                            "vPos = pulled(v, uEye);",
+                            plantVaryings() + "\n  vPos = oldPointPulled(v, uEye);")
                     .replace(
                             "vPos = uIrisShadow == 0 ? pulled(v, uEye) : v.pos;",
-                            plantVaryings() + "\n  vPos = uIrisShadow == 0 ? pulled(v, uEye) : v.pos;");
+                            plantVaryings() + "\n  vPos = uIrisShadow == 0 ? oldPointPulled(v, uEye) : v.pos;");
         }
         if (path.equals("far_shell.vert") || path.equals("iris/far_shell_vertex.glsl")) {
             if (source.contains("out vec3 vOPStructure;")) {
