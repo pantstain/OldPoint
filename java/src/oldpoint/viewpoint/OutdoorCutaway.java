@@ -43,6 +43,8 @@ final class OutdoorCutaway {
 
     private static final float STOREY = 2.4494896f;
     private static final int RADIUS = 32;
+    /** Roofs and eaves may reach one tile past a room, as {@link Selection#roofOwner} allows. */
+    private static final double EAVE = 1.0;
 
     private record Candidates(Object cell, Object grid, int x, int y, long time, List<BuildingDef> buildings) {}
 
@@ -195,18 +197,36 @@ final class OutdoorCutaway {
         var camera = CutawayProjection.Camera.perspective(eye);
         var broad =
                 CutawayProjection.prism(
-                        camera, b.getX() - 0.3, b.getY() - 0.3, low, b.getX2() + 0.3, b.getY2() + 0.3, high);
+                        camera,
+                        b.getX() - EAVE,
+                        b.getY() - EAVE,
+                        low,
+                        b.getX2() + EAVE,
+                        b.getY2() + EAVE,
+                        high);
         var rooms = new ArrayList<CutawayProjection.Volume>();
         for (var room : b.getRooms()) {
             if (room.level < eye.floor()) {
                 continue;
             }
             double bottom = Math.max(low, room.level * STOREY);
-            double top = (room.level + 1) * STOREY + (room.level == b.getMaxLevel() ? STOREY : 0);
+            double ceiling = (room.level + 1) * STOREY;
             for (var r : room.getRects()) {
                 rooms.add(
                         CutawayProjection.prism(
-                                camera, r.x - 0.25, r.y - 0.25, bottom, r.x + r.w + 0.25, r.y + r.h + 0.25, top));
+                                camera, r.x - 0.25, r.y - 0.25, bottom, r.x + r.w + 0.25, r.y + r.h + 0.25, ceiling));
+                // The roof over a room hangs past its walls. Without the eave
+                // margin a player just outside the wall is hidden by the eave
+                // while the building is never selected for collapse.
+                rooms.add(
+                        CutawayProjection.prism(
+                                camera,
+                                r.x - EAVE,
+                                r.y - EAVE,
+                                Math.max(low, ceiling),
+                                r.x + r.w + EAVE,
+                                r.y + r.h + EAVE,
+                                ceiling + STOREY));
             }
         }
         for (var target : targets) {
