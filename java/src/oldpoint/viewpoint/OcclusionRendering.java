@@ -59,7 +59,7 @@ final class OcclusionRendering {
     }
 
     private static void upload(GlProgram p, OcclusionSnapshot s, boolean shadow) {
-        boolean enabled = s != null && CameraDrawing.drawTopDown() && !shadow;
+        boolean enabled = s != null && CameraDrawing.drawTopDown() && !shadow && !DiagFlags.on("nointerior");
         if (p.has("uOPInterior")) {
             p.setInt("uOPInterior", enabled ? 1 : 0);
         }

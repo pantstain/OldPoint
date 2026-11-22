@@ -104,7 +104,7 @@ public final class VisionFade {
         Ranges r = ranges.get();
         // Characters.snapshot calls whole() after capture: apply fade last so
         // body, clothes and attachments receive the same opacity every frame.
-        if (r.active) {
+        if (r.active && !DiagFlags.on("nofade")) {
             for (int n = 0; n < r.count; n++) {
                 for (int i = r.starts[n]; i < r.ends[n]; i++) {
                     frame.scene.models.fade(i, 0, r.alphas[n]);
