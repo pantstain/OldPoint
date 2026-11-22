@@ -106,6 +106,14 @@ public final class VisionSystem {
                 nativeQuery.set(false);
             }
         }
+        if (!result) {
+            // Vanilla TestIfSeen also counts a zombie within the player's
+            // detection range on a square in line of sight, even outside the
+            // view cone, so a zombie right behind the player stays drawn in
+            // isometric view. Use the game's own per-tick result for it.
+            boolean[] seenBy = zombie.isVisibleToPlayer;
+            result = seenBy != null && index < seenBy.length && seenBy[index];
+        }
         s.frame = frame;
         s.index = index;
         s.at = now;
