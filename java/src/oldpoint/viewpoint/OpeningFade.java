@@ -114,6 +114,9 @@ public final class OpeningFade {
             clear();
             return new Capture(List.of(), Map.of());
         }
+        // Fence pieces a visible character stands against; part of the cache key
+        // so a character moving along a fence rescans only when its edges change.
+        var characterFences = CharacterFences.capture(player, floor);
         int faces = outdoor == null ? 1 : outdoor.walls().hashCode();
         if (outdoor != null) {
             faces = 31 * (31 * faces + Math.round(nearbyArea.x() * 4)) + Math.round(nearbyArea.y() * 4);
@@ -125,6 +128,7 @@ public final class OpeningFade {
             }
         }
         faces = 31 * faces + hiddenWalls.hashCode();
+        faces = 31 * faces + characterFences.hashCode();
         long now = System.nanoTime();
         var old = cached;
         boolean valid =
@@ -173,6 +177,15 @@ public final class OpeningFade {
                 minY = Math.min(minY, (int) Math.floor(nearbyArea.y() - NearbyFade.RADIUS));
                 maxY = Math.max(maxY, (int) Math.ceil(nearbyArea.y() + NearbyFade.RADIUS));
             }
+            for (var key : characterFences.keySet()) {
+                int fx = (int) (key >> 32), fy = (int) (long) key;
+                if (Math.abs(fx - cx) <= 48 && Math.abs(fy - cy) <= 48) {
+                    minX = Math.min(minX, fx);
+                    maxX = Math.max(maxX, fx);
+                    minY = Math.min(minY, fy);
+                    maxY = Math.max(maxY, fy);
+                }
+            }
             scan = new CaptureScan(minX, maxX, minY, maxY, floor, floor);
             pending = new ArrayList<>();
             pendingFurniture = new HashMap<>();
@@ -195,7 +208,9 @@ public final class OpeningFade {
         scan.begin();
         while (scan.next()) {
             int x = scan.x, y = scan.y;
-            if (!border(occupied, x, y)
+            int fenceMask = characterFences.getOrDefault(CharacterFences.key(x, y), 0);
+            if (fenceMask == 0
+                    && !border(occupied, x, y)
                     && !(furniture != null && furniture.nearCurrent(x, y))
                     && !(outdoor != null && nearbyArea.contains(x + 0.5f, y + 0.5f))) {
                 continue;
@@ -218,6 +233,7 @@ public final class OpeningFade {
                 var mainDecoration = mainEdge == null ? OpeningEdge.decoration(main, x, y) : null;
                 boolean nearby = outdoor != null && nearbyArea.contains(x + 0.5f, y + 0.5f);
                 boolean doorObject = object instanceof IsoDoor || object instanceof IsoThumpable t && t.isDoor();
+                boolean fenceObject = fenceMask != 0 && (CharacterFences.kind(main) & fenceMask) != 0;
                 boolean furnitureCandidate = furniture != null && furniture.candidate(square, object, main);
                 boolean doorCandidate =
                         furniture != null
@@ -225,8 +241,14 @@ public final class OpeningFade {
                                 && furniture.doorCandidate(square, mainEdge)
                                 && !furniture.nearWall(mainEdge);
                 boolean wholeObject =
-                        (furnitureCandidate || doorCandidate || nearby || mainEdge != null || mainDecoration != null)
+                        (furnitureCandidate
+                                        || doorCandidate
+                                        || nearby
+                                        || fenceObject
+                                        || mainEdge != null
+                                        || mainDecoration != null)
                                 && (NearbyFade.eligible(object, main)
+                                        || fenceObject
                                         || doorObject
                                         || object instanceof IsoWindow
                                         || object instanceof IsoCurtain);
@@ -252,6 +274,9 @@ public final class OpeningFade {
                     if (nearby && NearbyFade.eligible(object, main)) {
                         target = Math.max(target, NearbyFade.amount(object));
                     }
+                    if (fenceObject) {
+                        target = Math.max(target, CharacterFences.FADE);
+                    }
                     if (target > 0) {
                         pendingFurniture.merge(object, target, Math::max);
                     }
@@ -259,6 +284,7 @@ public final class OpeningFade {
                 var overlay = object.getOverlaySprite();
                 var attached = object.getAttachedAnimSprite();
                 if (!nearby
+                        && !fenceObject
                         && !furnitureCandidate
                         && !doorCandidate
                         && mainEdge == null
@@ -390,6 +416,9 @@ public final class OpeningFade {
                         float doorFade = doorCandidate ? furniture.doorFade(square, bounds) : 0;
                         if (!opening && !nearObject && furnitureFade <= 0 && doorFade <= 0 && !wholeObject) {
                             continue;
+                        }
+                        if (fenceObject) {
+                            furnitureFade = Math.max(furnitureFade, CharacterFences.FADE);
                         }
                         float fade =
                                 Math.max(
